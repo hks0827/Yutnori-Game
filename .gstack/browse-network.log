@@ -1,0 +1,8 @@
+[2026-05-16T04:49:23.912Z] GET http://localhost:7788/ → 200 (2ms, 6877B)
+[2026-05-16T04:49:23.916Z] GET http://localhost:7788/css/style.css → 200 (2ms, 13572B)
+[2026-05-16T04:49:23.916Z] GET http://localhost:7788/js/board.js → 200 (19ms, 16605B)
+[2026-05-16T04:49:23.917Z] GET http://localhost:7788/js/state.js → 200 (19ms, 5516B)
+[2026-05-16T04:49:23.917Z] GET http://localhost:7788/js/setup.js → 200 (19ms, 9779B)
+[2026-05-16T04:49:23.917Z] GET http://localhost:7788/js/game.js → 200 (19ms, 5852B)
+[2026-05-16T04:49:23.917Z] GET http://localhost:7788/js/ui.js → 200 (19ms, 10756B)
+[2026-05-16T04:49:23.917Z] GET http://localhost:7788/js/main.js → 200 (19ms, 6999B)

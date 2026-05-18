@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>전략 윷놀이</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- SETUP SCREEN -->
+  <div id="screen-setup" class="screen active">
+    <div class="setup-container">
+      <h1 class="game-title">전략 윷놀이</h1>
+
+      <!-- Step indicators -->
+      <div class="step-indicator">
+        <div class="step active" data-step="1"><span>1</span><label>플레이어</label></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span>2</span><label>팀 배치</label></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span>3</span><label>말 설정</label></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="4"><span>4</span><label>턴 순서</label></div>
+      </div>
+
+      <!-- Step 1: Player input -->
+      <div id="step-1" class="step-content active">
+        <h2>플레이어 입력</h2>
+        <div id="player-list">
+          <div class="player-input-row">
+            <input type="text" class="player-name" placeholder="플레이어 1 이름" value="플레이어 1" />
+            <button class="btn-remove-player" onclick="removePlayerRow(this)">✕</button>
+          </div>
+          <div class="player-input-row">
+            <input type="text" class="player-name" placeholder="플레이어 2 이름" value="플레이어 2" />
+            <button class="btn-remove-player" onclick="removePlayerRow(this)">✕</button>
+          </div>
+        </div>
+        <button class="btn-secondary" id="btn-add-player">+ 플레이어 추가</button>
+        <div class="step-actions">
+          <button class="btn-primary" id="btn-step1-next">다음 →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Team assignment (drag-and-drop) -->
+      <div id="step-2" class="step-content">
+        <h2>팀 배치</h2>
+        <div class="team-count-row">
+          <label>팀 수:</label>
+          <select id="team-count">
+            <option value="2">2팀</option>
+            <option value="3">3팀</option>
+            <option value="4">4팀</option>
+          </select>
+          <button class="btn-secondary" id="btn-generate-teams">팀 생성</button>
+        </div>
+        <div class="drag-area">
+          <div class="unassigned-pool">
+            <h3>미배치 플레이어</h3>
+            <div id="unassigned-players" class="drop-zone"></div>
+          </div>
+          <div id="team-zones" class="team-zones"></div>
+        </div>
+        <div class="step-actions">
+          <button class="btn-secondary" id="btn-step2-back">← 이전</button>
+          <button class="btn-primary" id="btn-step2-next">다음 →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Piece count -->
+      <div id="step-3" class="step-content">
+        <h2>말 수 설정</h2>
+        <div class="piece-settings">
+          <div class="setting-row">
+            <label>팀 말 수 (팀당):</label>
+            <div class="number-input-group">
+              <button class="btn-num" onclick="adjustNum('team-pieces', -1)">-</button>
+              <span id="team-pieces">2</span>
+              <button class="btn-num" onclick="adjustNum('team-pieces', 1)">+</button>
+            </div>
+            <span class="setting-hint">(1~6개)</span>
+          </div>
+          <div class="setting-row">
+            <label>개인 말 수 (플레이어당):</label>
+            <div class="number-input-group">
+              <button class="btn-num" onclick="adjustNum('personal-pieces', -1)">-</button>
+              <span id="personal-pieces">1</span>
+              <button class="btn-num" onclick="adjustNum('personal-pieces', 1)">+</button>
+            </div>
+            <span class="setting-hint">(1~3개)</span>
+          </div>
+        </div>
+        <div class="step-actions">
+          <button class="btn-secondary" id="btn-step3-back">← 이전</button>
+          <button class="btn-primary" id="btn-step3-next">다음 →</button>
+        </div>
+      </div>
+
+      <!-- Setup notifications -->
+      <div id="setup-notification-area" class="notification-area"></div>
+
+      <!-- Step 4: Turn order preview -->
+      <div id="step-4" class="step-content">
+        <h2>턴 순서 미리보기</h2>
+        <div id="turn-order-preview" class="turn-order-preview"></div>
+        <div class="step-actions">
+          <button class="btn-secondary" id="btn-step4-back">← 이전</button>
+          <button class="btn-primary" id="btn-start-game">게임 시작!</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="screen-game" class="screen">
+    <div class="game-layout">
+      <!-- Left: board -->
+      <div class="board-area">
+        <svg id="yut-board" width="600" height="600" viewBox="0 0 600 600"></svg>
+      </div>
+
+      <!-- Right: control panel -->
+      <div class="control-panel">
+        <div class="turn-info">
+          <div id="current-player-name" class="current-player">-</div>
+          <div id="current-team-name" class="current-team">-</div>
+        </div>
+
+        <div class="score-board">
+          <div id="team-progress" class="progress-section">
+            <h4>팀 말 현황</h4>
+            <div id="team-progress-list"></div>
+          </div>
+          <div id="personal-progress" class="progress-section">
+            <h4>개인 말 현황</h4>
+            <div id="personal-progress-list"></div>
+          </div>
+        </div>
+
+        <div class="yut-section">
+          <button class="btn-primary btn-roll" id="btn-roll-yut">윷 던지기</button>
+          <div id="yut-result-display" class="yut-result hidden">
+            <div id="yut-throw-area" class="yut-throw-area"></div>
+            <div id="yut-name" class="yut-name"></div>
+            <div id="yut-steps" class="yut-steps"></div>
+          </div>
+          <div id="pending-results" class="pending-results"></div>
+        </div>
+
+        <div id="piece-selection" class="piece-selection hidden">
+          <h4>이동할 말 선택:</h4>
+          <div id="movable-pieces-list"></div>
+        </div>
+
+        <div id="notification-area" class="notification-area"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WINNER SCREEN -->
+  <div id="screen-winner" class="screen">
+    <div class="winner-container">
+      <div class="winner-trophy">🏆</div>
+      <h1 id="winner-title">승리!</h1>
+      <p id="winner-description"></p>
+      <button class="btn-primary" id="btn-play-again">다시 하기</button>
+    </div>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- 3D 윷 던지기 오버레이 -->
+  <div id="yut3d-overlay" class="yut3d-overlay hidden">
+    <canvas id="yut3d-canvas"></canvas>
+    <div id="yut3d-hint" class="yut3d-hint">꾹 눌러서 윷을 흔드세요</div>
+    <button id="yut3d-continue" class="btn-primary yut3d-continue hidden">계속 →</button>
+  </div>
+
+  <script src="js/board.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/setup.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/yut3d.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
