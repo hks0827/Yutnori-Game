@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__playwright__browser_tabs",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_console_errors",
+      "mcp__playwright__browser_eval",
+      "mcp__playwright__browser_refresh",
+      "mcp__playwright__browser_close",
+      "mcp__playwright__page_source",
+      "mcp__playwright__wait_for_selector",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_screenshot_selector",
+      "mcp__playwright__set_local_storage",
+      "mcp__playwright__get_local_storage",
+      "Bash(python3 -m http.server 8765 &>/tmp/yutnori-server.log &)",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_evaluate",
+      "Bash(rm /Users/khg0408/Documents/MIDAS/Yutnori-Game/baseline-*.json /Users/khg0408/Documents/MIDAS/Yutnori-Game/after-*.json /Users/khg0408/Documents/MIDAS/Yutnori-Game/after-refactor.png 2>/dev/null; ls /Users/khg0408/Documents/MIDAS/Yutnori-Game/js/)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp",
+      "/Users/khg0408/Documents/MIDAS/Yutnori-Game"
+    ]
+  }
+}

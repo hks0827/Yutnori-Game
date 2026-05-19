@@ -1,74 +1,77 @@
-// ===== MAIN ENTRY POINT =====
+// ===== MAIN: turn flow + event wiring =====
 
 (function () {
-  // ---- Turn interaction state (not game logic state) ----
-  let selectedResultIdx = 0;   // which pending result badge is active
-  let selectedPieceId = null;  // which piece is selected (showing destinations)
+  // ---- Interaction state (separate from game state) ----
+  let selectedResultIdx = 0;
+  let selectedPieceId   = null;
 
-  const svgEl = () => document.getElementById('yut-board');
+  const boardSvg = () => $('yut-board');
 
-  // ===== CORE REFRESH =====
-  // Called after every state change. Syncs all UI to current game state.
+  // ===== Helpers =====
+  function clampResultIdx(pending) {
+    if (selectedResultIdx >= pending.length) {
+      selectedResultIdx = Math.max(0, pending.length - 1);
+    }
+  }
+
+  function clearBoardOverlays() {
+    BOARD.clearDestinations(boardSvg());
+    BOARD.clearSelectableRings(boardSvg());
+  }
+
+  function clearSelection() {
+    selectedPieceId = null;
+    BOARD.clearDestinations(boardSvg());
+  }
+
+  function movablePiecesNow(state, steps) {
+    const player = getCurrentPlayer(state);
+    return (steps && player) ? getMovablePieces(player.id, steps, state) : [];
+  }
+
+  // ===== Core refresh after any state change =====
   function refreshTurnUI() {
     const state = getState();
     if (state.phase !== 'GAME') return;
 
-    // Clamp selectedResultIdx in case array shrank
-    if (selectedResultIdx >= state.pendingYutResults.length) {
-      selectedResultIdx = Math.max(0, state.pendingYutResults.length - 1);
-    }
-
-    // Roll button: enabled when canRollAgain
+    clampResultIdx(state.pendingYutResults);
     UI.setRollEnabled(state.canRollAgain);
-
-    // Pending result badges (clickable)
     UI.updatePendingDisplay(state, selectedResultIdx, onResultSelected);
 
-    // Get movable pieces for currently selected result
     const steps = state.pendingYutResults[selectedResultIdx];
-    const player = getCurrentPlayer(state);
-    const movable = (steps && player)
-      ? getMovablePieces(player.id, steps, state)
-      : [];
-
-    // Re-render board with piece click handlers for ON_BOARD movable pieces
+    const movable = movablePiecesNow(state, steps);
     const boardMovable = movable.filter(p => p.state === 'ON_BOARD');
-    UI.updateBoardPieces(state, boardMovable.length > 0
-      ? (piece) => onPieceClicked(piece)
-      : null
-    );
 
-    // Selectable rings on movable ON_BOARD pieces
+    UI.updateBoardPieces(state, boardMovable.length > 0 ? onPieceClicked : null);
+
     if (boardMovable.length > 0) {
-      BOARD.setSelectableRings(svgEl(), boardMovable, selectedPieceId, onPieceClicked);
+      BOARD.setSelectableRings(boardSvg(), boardMovable, selectedPieceId, onPieceClicked);
     } else {
-      BOARD.clearSelectableRings(svgEl());
+      BOARD.clearSelectableRings(boardSvg());
     }
 
-    // Waiting pieces panel
     UI.showPieceSelection(movable, state, steps, onPieceClicked);
 
-    // If a piece is already selected, keep showing its destinations
-    if (selectedPieceId && steps) {
-      const piece = state.pieces[selectedPieceId];
-      if (piece && (piece.state === 'ON_BOARD' || piece.state === 'WAITING')) {
-        showDestinationsFor(piece, steps);
-      } else {
-        selectedPieceId = null;
-        BOARD.clearDestinations(svgEl());
-      }
-    }
+    keepSelectedDestVisible(state, steps);
   }
 
-  // ===== RESULT SELECTION =====
+  function keepSelectedDestVisible(state, steps) {
+    if (!selectedPieceId || !steps) return;
+    const piece = state.pieces[selectedPieceId];
+    if (!piece || (piece.state !== 'ON_BOARD' && piece.state !== 'WAITING')) {
+      clearSelection();
+      return;
+    }
+    showDestinationsFor(piece, steps);
+  }
+
+  // ===== Selection handlers =====
   function onResultSelected(idx) {
     selectedResultIdx = idx;
-    selectedPieceId = null;
-    BOARD.clearDestinations(svgEl());
+    clearSelection();
     refreshTurnUI();
   }
 
-  // ===== PIECE SELECTION =====
   function onPieceClicked(piece) {
     const state = getState();
     const steps = state.pendingYutResults[selectedResultIdx];
@@ -76,23 +79,15 @@
 
     selectedPieceId = piece.pieceId;
 
-    // Rebuild selectable rings to show selected state
     const player = getCurrentPlayer(state);
-    const movable = getMovablePieces(player.id, steps, state)
-      .filter(p => p.state === 'ON_BOARD');
-    BOARD.setSelectableRings(svgEl(), movable, selectedPieceId, onPieceClicked);
-
-    // Show destination preview
+    const onBoardMovable = getMovablePieces(player.id, steps, state).filter(p => p.state === 'ON_BOARD');
+    BOARD.setSelectableRings(boardSvg(), onBoardMovable, selectedPieceId, onPieceClicked);
     showDestinationsFor(piece, steps);
   }
 
-  // Show white dashed destination circles for a piece + steps
   function showDestinationsFor(piece, steps) {
-    const fromPos = piece.state === 'WAITING' ? -1 : piece.position;
-    // Pass prevPosition so center (24) routing works correctly
+    const fromPos = piece.state === 'WAITING' ? WAITING_POSITION : piece.position;
     const options = BOARD.getLandingOptions(fromPos, steps, piece.prevPosition);
-
-    // Build map: landing → callback (one entry per unique landing destination)
     const destMap = {};
     for (const opt of options) {
       const key = String(opt.landing);
@@ -100,97 +95,84 @@
         destMap[key] = () => applyPieceMove(piece.pieceId, steps, opt.landing);
       }
     }
-
-    BOARD.showDestinations(svgEl(), destMap);
+    BOARD.showDestinations(boardSvg(), destMap);
   }
 
-  // ===== APPLY MOVE =====
+  // ===== Move application =====
   function applyPieceMove(pieceId, steps, targetLanding) {
     const state = getState();
     const { newState, captured } = GAME.applyMove(pieceId, steps, state, targetLanding);
 
-    // Consume the SELECTED result (not always index 0)
-    const afterConsume = GAME.consumePendingResultAt(newState, selectedResultIdx);
+    let next = GAME.consumePendingResultAt(newState, selectedResultIdx);
+    if (captured) next = { ...next, canRollAgain: true };
 
-    // Reset selection
     selectedPieceId = null;
-    selectedResultIdx = Math.min(selectedResultIdx, afterConsume.pendingYutResults.length - 1);
-    if (selectedResultIdx < 0) selectedResultIdx = 0;
-
-    // Clear board overlays
-    BOARD.clearDestinations(svgEl());
-    BOARD.clearSelectableRings(svgEl());
-
-    // Capture grants bonus roll
-    const withCapture = captured
-      ? { ...afterConsume, canRollAgain: true }
-      : afterConsume;
-
-    setState(withCapture);
+    selectedResultIdx = Math.max(0, Math.min(selectedResultIdx, next.pendingYutResults.length - 1));
+    clearBoardOverlays();
+    setState(next);
     UI.updateAll();
 
     if (captured) showNotification('잡았습니다! 추가 턴 획득!', 'success');
 
-    // Victory check
-    const winner = checkVictory(withCapture);
+    const winner = checkVictory(next);
     if (winner) {
-      setState({ ...withCapture, phase: 'FINISHED', winner });
+      setState({ ...next, phase: 'FINISHED', winner });
       UI.showWinner(winner, getState());
       return;
     }
 
-    // End turn if nothing left
-    if (withCapture.pendingYutResults.length === 0 && !withCapture.canRollAgain) {
-      endTurn(withCapture);
+    if (next.pendingYutResults.length === 0 && !next.canRollAgain) {
+      endTurn(next);
     } else {
       refreshTurnUI();
     }
   }
 
-  // ===== ROLL =====
-  document.getElementById('btn-roll-yut').addEventListener('click', () => {
+  // ===== Roll button =====
+  function displayRollInControlPanel(roll) {
+    const resEl   = $('yut-result-display');
+    const nameEl  = $('yut-name');
+    const stepsEl = $('yut-steps');
+    const throwArea = $('yut-throw-area');
+    if (resEl)   resEl.classList.remove('hidden');
+    if (nameEl)  { nameEl.textContent = roll.name; nameEl.classList.remove('reveal'); }
+    if (stepsEl) stepsEl.textContent  = roll.steps < 0 ? '1칸 후진 (빽도)' : `${roll.steps}칸 이동`;
+    if (throwArea) throwArea.innerHTML = '';
+  }
+
+  function notifyRollResult(roll, isBonusRoll) {
+    if (isBonusRoll) {
+      showNotification(`${roll.name}! 한 번 더 던지거나, 말을 이동하세요.`, 'success');
+    }
+    if (roll.name === '빽도') {
+      showNotification('빽도! 말이 1칸 후진합니다.', 'info');
+    }
+  }
+
+  function onRollComplete(roll) {
+    const state = getState();
+    const { newState, isBonusRoll } = GAME.processRoll(roll, state);
+
+    selectedResultIdx = newState.pendingYutResults.length - 1;
+    clearSelection();
+    setState(newState);
+
+    displayRollInControlPanel(roll);
+    notifyRollResult(roll, isBonusRoll);
+    refreshTurnUI();
+  }
+
+  function onRollClicked() {
     const state = getState();
     if (state.phase !== 'GAME' || !state.canRollAgain) return;
-
     UI.setRollEnabled(false);
+    YUT3D.show(onRollComplete);
+  }
 
-    // 3D 윷 던지기 오버레이: 물리 결과로 roll 결정
-    YUT3D.show((roll) => {
-      const { newState, isBonusRoll } = GAME.processRoll(roll, state);
-
-      selectedResultIdx = newState.pendingYutResults.length - 1;
-      selectedPieceId   = null;
-      BOARD.clearDestinations(svgEl());
-      setState(newState);
-
-      // 컨트롤 패널에 결과 표시 (애니메이션 없이 즉시)
-      const nameEl  = document.getElementById('yut-name');
-      const stepsEl = document.getElementById('yut-steps');
-      const resEl   = document.getElementById('yut-result-display');
-      if (resEl)   resEl.classList.remove('hidden');
-      if (nameEl)  { nameEl.textContent = roll.name; nameEl.classList.remove('reveal'); }
-      if (stepsEl) stepsEl.textContent  = roll.steps < 0
-        ? '1칸 후진 (빽도)'
-        : `${roll.steps}칸 이동`;
-      const throwArea = document.getElementById('yut-throw-area');
-      if (throwArea) throwArea.innerHTML = '';
-
-      if (isBonusRoll) {
-        showNotification(`${roll.name}! 한 번 더 던지거나, 말을 이동하세요.`, 'success');
-      }
-      if (roll.name === '빽도') {
-        showNotification('빽도! 말이 1칸 후진합니다.', 'info');
-      }
-
-      refreshTurnUI();
-    });
-  });
-
-  // ===== END TURN =====
+  // ===== End-of-turn =====
   function endTurn(state) {
     UI.hidePieceSelection();
-    BOARD.clearSelectableRings(svgEl());
-    BOARD.clearDestinations(svgEl());
+    clearBoardOverlays();
     selectedPieceId = null;
     selectedResultIdx = 0;
 
@@ -201,29 +183,35 @@
     UI.updatePendingDisplay(nextState, -1, onResultSelected);
 
     const player = getCurrentPlayer(nextState);
-    const team = getCurrentTeam(nextState);
+    const team   = getCurrentTeam(nextState);
     if (player && team) {
       showNotification(`${player.name} (${team.name}) 의 턴입니다.`, 'info');
     }
   }
 
-  // ===== PLAY AGAIN =====
-  document.getElementById('btn-play-again').addEventListener('click', () => {
+  // ===== Play again =====
+  function resetToSetupScreen() {
+    document.querySelectorAll('.step-content').forEach(el => el.classList.remove('active'));
+    $('step-1').classList.add('active');
+    document.querySelectorAll('.step[data-step]').forEach(el => {
+      el.classList.remove('active', 'done');
+      if (el.dataset.step === '1') el.classList.add('active');
+    });
+    const res = $('yut-result-display');
+    if (res) res.classList.add('hidden');
+  }
+
+  function onPlayAgain() {
     setState(createInitialState());
     SETUP.reset();
     selectedResultIdx = 0;
     selectedPieceId = null;
     showScreen('setup');
-    document.querySelectorAll('.step-content').forEach(el => el.classList.remove('active'));
-    document.getElementById('step-1').classList.add('active');
-    document.querySelectorAll('.step[data-step]').forEach(el => {
-      el.classList.remove('active', 'done');
-      if (el.dataset.step === '1') el.classList.add('active');
-    });
-    const res = document.getElementById('yut-result-display');
-    if (res) res.classList.add('hidden');
-  });
+    resetToSetupScreen();
+  }
 
-  // ===== SETUP =====
+  // ===== Boot =====
+  $('btn-roll-yut').addEventListener('click', onRollClicked);
+  $('btn-play-again').addEventListener('click', onPlayAgain);
   SETUP.init();
 })();

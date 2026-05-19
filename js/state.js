@@ -1,161 +1,155 @@
-// ===== STATE MODEL =====
+// ===== STATE MODEL + QUERIES =====
 
+// ---- Factories ----
 function createInitialState() {
   return {
-    phase: 'SETUP',       // 'SETUP' | 'GAME' | 'FINISHED'
-    players: [],          // Player[]
-    teams: [],            // Team[]
-    turnOrder: [],        // playerId[] (interleaved by team)
+    phase: 'SETUP',
+    players: [],
+    teams: [],
+    turnOrder: [],
     currentTurnIndex: 0,
-    pieces: {},           // pieceId → Piece
-    boardState: {},       // position → pieceId[] (for ON_BOARD pieces)
-    pendingYutResults: [],// number[] steps queued to use for moving
-    canRollAgain: true,   // roll button enabled (true at turn start, stays true on 윷/모)
-    winner: null,         // { type: 'TEAM'|'PERSONAL', id: teamId|playerId } | null
-    lastYutRoll: null,    // { name, steps, sticks }
+    pieces: {},
+    boardState: {},
+    pendingYutResults: [],
+    canRollAgain: true,
+    winner: null,
+    lastYutRoll: null,
   };
 }
 
-// Player factory
 function createPlayer(id, name) {
   return { id, name };
 }
 
-// Team factory
 function createTeam(id, name, playerIds, colorIndex) {
   return { id, name, playerIds, colorIndex };
 }
 
-// Piece factory
 function createPiece(pieceId, type, ownerId, teamId) {
   return {
     pieceId,
-    type,           // 'TEAM' | 'PERSONAL'
-    ownerId,        // playerId who owns this piece
-    teamId,         // teamId
-    position: -1,      // -1 = waiting, 0-26 = board, 'EXIT' = done
-    prevPosition: null, // position the piece came from (needed for center 24 routing)
-    state: 'WAITING',  // 'WAITING' | 'ON_BOARD' | 'FINISHED'
-    stackCount: 1,     // how many stacked pieces
+    type,
+    ownerId,
+    teamId,
+    position: WAITING_POSITION,
+    prevPosition: null,
+    state: 'WAITING',
+    stackCount: 1,
   };
 }
 
-// Build turn order: interleave by team (T1-P1, T2-P1, T1-P2, T2-P2, ...)
+// ---- Turn order ----
 function buildTurnOrder(teams, players) {
-  const teamGroups = teams.map(t => [...t.playerIds]);
-  const maxLen = Math.max(...teamGroups.map(g => g.length));
+  const groups = teams.map(t => [...t.playerIds]);
+  const maxLen = Math.max(...groups.map(g => g.length));
   const order = [];
   for (let i = 0; i < maxLen; i++) {
-    for (const group of teamGroups) {
-      if (i < group.length) order.push(group[i]);
+    for (const g of groups) {
+      if (i < g.length) order.push(g[i]);
     }
   }
   return order;
 }
 
-// Initialize all pieces based on setup config
-function initializePieces(teams, players, teamPieceCount, personalPieceCount) {
-  const pieces = {};
-  let pieceCounter = 0;
+// ---- Piece initialization ----
+function createTeamPieces(team, count) {
+  const out = {};
+  for (let i = 0; i < count; i++) {
+    const id = `team-${team.id}-${i}`;
+    out[id] = createPiece(id, 'TEAM', team.playerIds[0], team.id);
+  }
+  return out;
+}
 
+function createPersonalPiecesForPlayer(playerId, teamId, count) {
+  const out = {};
+  for (let i = 0; i < count; i++) {
+    const id = `personal-${playerId}-${i}`;
+    out[id] = createPiece(id, 'PERSONAL', playerId, teamId);
+  }
+  return out;
+}
+
+// `players` is kept for API compatibility (callers pass it but pieces derive owner from team.playerIds)
+function initializePieces(teams, players, teamCount, personalCount) {
+  void players;
+  const pieces = {};
   for (const team of teams) {
-    // Team pieces (shared, owned by team but attributed to first player for simplicity)
-    for (let i = 0; i < teamPieceCount; i++) {
-      const pid = `team-${team.id}-${i}`;
-      pieces[pid] = createPiece(pid, 'TEAM', team.playerIds[0], team.id);
-    }
-    // Personal pieces per player in team
-    for (const playerId of team.playerIds) {
-      for (let j = 0; j < personalPieceCount; j++) {
-        const pid = `personal-${playerId}-${j}`;
-        pieces[pid] = createPiece(pid, 'PERSONAL', playerId, team.id);
-      }
+    Object.assign(pieces, createTeamPieces(team, teamCount));
+    for (const pid of team.playerIds) {
+      Object.assign(pieces, createPersonalPiecesForPlayer(pid, team.id, personalCount));
     }
   }
-
   return pieces;
 }
 
-// Get team pieces for a team
+// ---- Queries ----
 function getTeamPieces(teamId, state) {
   return Object.values(state.pieces).filter(p => p.type === 'TEAM' && p.teamId === teamId);
 }
 
-// Get personal pieces for a player
 function getPersonalPieces(playerId, state) {
   return Object.values(state.pieces).filter(p => p.type === 'PERSONAL' && p.ownerId === playerId);
 }
 
-// Get the current player
+function findPlayerTeam(state, playerId) {
+  return state.teams.find(t => t.playerIds.includes(playerId)) || null;
+}
+
 function getCurrentPlayer(state) {
   const pid = state.turnOrder[state.currentTurnIndex % state.turnOrder.length];
   return state.players.find(p => p.id === pid) || null;
 }
 
-// Get the current player's team
 function getCurrentTeam(state) {
   const player = getCurrentPlayer(state);
-  if (!player) return null;
-  return state.teams.find(t => t.playerIds.includes(player.id)) || null;
+  return player ? findPlayerTeam(state, player.id) : null;
 }
 
-// Get all movable pieces for the current player (given steps)
+// Movable pieces: 빽도(steps<0)는 보드 위 말만, 그 외엔 WAITING + ON_BOARD
+function isPieceMovable(piece, steps) {
+  if (steps < 0) return piece.state === 'ON_BOARD';
+  return piece.state === 'WAITING' || piece.state === 'ON_BOARD';
+}
+
 function getMovablePieces(playerId, steps, state) {
-  const player = state.players.find(p => p.id === playerId);
-  if (!player) return [];
-  const team = state.teams.find(t => t.playerIds.includes(playerId));
+  const team = findPlayerTeam(state, playerId);
   if (!team) return [];
-
-  const movable = [];
-
-  // 빽도(steps < 0)는 판 위의 말만 이동 가능
-  const canMove = steps < 0
-    ? (p) => p.state === 'ON_BOARD'
-    : (p) => p.state === 'WAITING' || p.state === 'ON_BOARD';
-
-  for (const piece of getTeamPieces(team.id, state)) {
-    if (canMove(piece)) movable.push(piece);
-  }
-  for (const piece of getPersonalPieces(playerId, state)) {
-    if (canMove(piece)) movable.push(piece);
-  }
-
-  return movable;
+  const candidates = [...getTeamPieces(team.id, state), ...getPersonalPieces(playerId, state)];
+  return candidates.filter(p => isPieceMovable(p, steps));
 }
 
-// Check victory conditions
+// ---- Victory ----
+function allFinished(pieces) {
+  return pieces.length > 0 && pieces.every(p => p.state === 'FINISHED');
+}
+
 function checkVictory(state) {
-  // Personal victory (higher priority)
   for (const player of state.players) {
-    const personalPieces = getPersonalPieces(player.id, state);
-    if (personalPieces.length > 0 && personalPieces.every(p => p.state === 'FINISHED')) {
+    if (allFinished(getPersonalPieces(player.id, state))) {
       return { type: 'PERSONAL', id: player.id };
     }
   }
-  // Team victory
   for (const team of state.teams) {
-    const teamPieces = getTeamPieces(team.id, state);
-    if (teamPieces.length > 0 && teamPieces.every(p => p.state === 'FINISHED')) {
+    if (allFinished(getTeamPieces(team.id, state))) {
       return { type: 'TEAM', id: team.id };
     }
   }
   return null;
 }
 
-// Update boardState index from pieces
+// ---- Board state index ----
 function rebuildBoardState(pieces) {
-  const boardState = {};
-  for (const piece of Object.values(pieces)) {
-    if (piece.state === 'ON_BOARD') {
-      const pos = piece.position;
-      if (!boardState[pos]) boardState[pos] = [];
-      boardState[pos].push(piece.pieceId);
-    }
+  const out = {};
+  for (const p of Object.values(pieces)) {
+    if (p.state !== 'ON_BOARD') continue;
+    if (!out[p.position]) out[p.position] = [];
+    out[p.position].push(p.pieceId);
   }
-  return boardState;
+  return out;
 }
 
-// Advance to next turn
+// ---- Turn transition ----
 function advanceTurn(state) {
   return {
     ...state,
@@ -166,8 +160,7 @@ function advanceTurn(state) {
   };
 }
 
-// Global game state (mutable singleton)
+// ---- Global state singleton ----
 let gameState = createInitialState();
-
 function getState() { return gameState; }
 function setState(newState) { gameState = newState; }
