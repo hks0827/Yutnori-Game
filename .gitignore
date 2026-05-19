@@ -1,0 +1,4 @@
+.playwright-mcp/
+.cluade/
+!.cluade/commands/
+!.claude/settings.json
