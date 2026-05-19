@@ -6,7 +6,7 @@ const GAME = (() => {
 
   // ---- Yut roll (random fallback; 3D path bypasses this) ----
   function rollSticks() {
-    return [0, 0, 0, 0].map(() => Math.random() < 0.5 ? 0 : 1);
+    return Array(NUM_YUT_STICKS).fill(0).map(() => Math.random() < 0.5 ? 0 : 1);
   }
 
   function rollYut() {
@@ -25,7 +25,7 @@ const GAME = (() => {
   // ---- Piece state transitions (immutable) ----
   const exitCarrier = (p) => ({ ...p, state: 'FINISHED', position: 'EXIT', prevPosition: null, stackCount: 1 });
   const exitSub     = (p) => ({ ...p, state: 'FINISHED', position: 'EXIT', prevPosition: null, stackedOn: null, stackCount: 1 });
-  const sendHome    = (p) => ({ ...p, state: 'WAITING',  position: -1,     stackCount: 1, stackedOn: null });
+  const sendHome    = (p) => ({ ...p, state: 'WAITING',  position: WAITING_POSITION, stackCount: 1, stackedOn: null });
   const placeOnBoard = (p, landing, prev) => ({ ...p, state: 'ON_BOARD', position: landing, prevPosition: prev });
 
   // Apply a transform to a carrier and a (possibly different) transform to its stacked subs.
@@ -75,7 +75,7 @@ const GAME = (() => {
   function applyMove(pieceId, steps, state, targetLanding) {
     const pieces  = { ...state.pieces };
     const piece   = pieces[pieceId];
-    const fromPos = piece.state === 'WAITING' ? -1 : piece.position;
+    const fromPos = piece.state === 'WAITING' ? WAITING_POSITION : piece.position;
 
     const options = BOARD.getLandingOptions(fromPos, steps, piece.prevPosition);
     const chosen  = pickLandingOption(options, targetLanding);

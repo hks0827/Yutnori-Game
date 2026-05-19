@@ -31,7 +31,7 @@ function createPiece(pieceId, type, ownerId, teamId) {
     type,
     ownerId,
     teamId,
-    position: -1,
+    position: WAITING_POSITION,
     prevPosition: null,
     state: 'WAITING',
     stackCount: 1,

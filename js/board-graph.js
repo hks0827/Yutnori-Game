@@ -14,6 +14,11 @@
 
 const BOARD_GRAPH = (() => {
   const SVG_W = 600, SVG_H = 600, PAD = 60;
+  // 대각선 내부 정거장 (board-graph 전용)
+  const DIAG_FROM_5_INNER = 27;   // 5→24 대각선에서 중앙에 가까운 칸
+  const DIAG_TO_15_INNER  = 29;   // 24→15 대각선에서 중앙에 가까운 칸 (prev===27일 때만 진입)
+  const MAX_LINEAR_POSITION = 19; // 외곽 단순 후진 가능 범위 끝 (1..19)
+
   const CORNERS = {
     0:  [SVG_W - PAD, SVG_H - PAD],
     5:  [SVG_W - PAD, PAD],
@@ -72,11 +77,11 @@ const BOARD_GRAPH = (() => {
 
   // ---- Forward step: determine successors of `cur` ----
   function forwardNexts(cur, prev, startPos) {
-    if (cur === 24) {
+    if (cur === CENTER_POSITION) {
       // Center: arm depends on which arm we arrived from.
       // Branch (29 ∨ 25) only if STANDING at center at turn start.
-      if (cur === startPos) return (prev === 27) ? [29, 25] : [25];
-      return (prev === 27) ? [29] : [25];
+      if (cur === startPos) return (prev === DIAG_FROM_5_INNER) ? [DIAG_TO_15_INNER, 25] : [25];
+      return (prev === DIAG_FROM_5_INNER) ? [DIAG_TO_15_INNER] : [25];
     }
     if (cur === startPos && isShortcutCorner(cur)) return shortcuts[cur];
     return nextMap[cur] || ['EXIT'];
@@ -84,14 +89,14 @@ const BOARD_GRAPH = (() => {
 
   // ---- Backward step (single) ----
   function backwardStep(pos, prevPos) {
-    if (pos >= 1 && pos <= 19) return pos - 1;
-    if (pos === 24 && prevPos != null) return prevPos;
+    if (pos >= 1 && pos <= MAX_LINEAR_POSITION) return pos - 1;
+    if (pos === CENTER_POSITION && prevPos != null) return prevPos;
     return backwardMap[pos];
   }
 
   // 빽도: 후진 이동 — 출발선/대기 상태는 후진 불가
   function getBackwardLanding(fromPos, steps, prevPos) {
-    if (fromPos === -1 || fromPos === 0) return [];
+    if (fromPos === WAITING_POSITION || fromPos === START_POSITION) return [];
     let pos = fromPos;
     for (let i = 0; i < Math.abs(steps); i++) {
       const next = backwardStep(pos, prevPos);
@@ -103,7 +108,7 @@ const BOARD_GRAPH = (() => {
 
   // 전진: BFS — 분기(코너 단축, 중앙)를 고려해 가능한 모든 landing을 수집
   function getForwardLandings(fromPos, steps, prevPos) {
-    const startPos  = (fromPos === -1) ? 0 : fromPos;
+    const startPos  = (fromPos === WAITING_POSITION) ? START_POSITION : fromPos;
     const startPrev = (prevPos != null) ? prevPos : null;
 
     let frontier = [{ cur: startPos, prev: startPrev, stepsLeft: steps, path: [] }];

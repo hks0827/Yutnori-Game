@@ -3,7 +3,7 @@
 const BOARD_RENDER = (() => {
   const { coords } = BOARD_GRAPH;
   const CORNER_R = 22, NORMAL_R = 13, CENTER_R = 24;
-  const SPECIAL = new Set([0, 5, 10, 15, 24]);
+  const SPECIAL = new Set([0, 5, 10, 15, CENTER_POSITION]);
   const PIECE_R = 9, PIECE_STACK_OFFSET = 8, TRI_SIZE = 8;
   const SELECT_R = 15;
 
@@ -11,20 +11,20 @@ const BOARD_RENDER = (() => {
   const FRAME = [coords[0], [coords[5][0], coords[5][1]], [coords[10][0], coords[10][1]], [coords[15][0], coords[15][1]]];
 
   function radiusOf(pos) {
-    if (pos === 24) return CENTER_R;
+    if (pos === CENTER_POSITION) return CENTER_R;
     if (SPECIAL.has(pos)) return CORNER_R;
     return NORMAL_R;
   }
 
   function nodeClass(pos) {
-    if (pos === 24) return 'node-circle center';
-    if (SPECIAL.has(pos) && pos !== 24) return 'node-circle corner';
+    if (pos === CENTER_POSITION) return 'node-circle center';
+    if (SPECIAL.has(pos) && pos !== CENTER_POSITION) return 'node-circle corner';
     return 'node-circle';
   }
 
   function nodeLabel(pos) {
-    if (pos === 0) return '출발';
-    if (pos === 24) return '중앙';
+    if (pos === START_POSITION) return '출발';
+    if (pos === CENTER_POSITION) return '중앙';
     return '';
   }
 
@@ -57,7 +57,7 @@ const BOARD_RENDER = (() => {
 
   // ---- Single node: circle + label ----
   function drawNode(layer, pos, x, y) {
-    if (pos === 20) return; // pos 20 visually overlaps pos 0
+    if (pos === FINISH_LANDING_POSITION) return; // 가상 finish landing은 출발선과 같은 좌표
     const r = radiusOf(pos);
     layer.appendChild(svgEl('circle', { cx: x, cy: y, r, class: nodeClass(pos), 'data-pos': pos }));
     layer.appendChild(svgEl('text', {
@@ -93,11 +93,11 @@ const BOARD_RENDER = (() => {
     for (const [posStr, cb] of Object.entries(destMap)) {
       const pos = posStr === 'EXIT' ? 'EXIT' : Number(posStr);
       const isExit = pos === 'EXIT';
-      const isFinishLanding = pos === 20;
-      const drawPos = isExit ? 0 : pos;
+      const isFinishLanding = pos === FINISH_LANDING_POSITION;
+      const drawPos = isExit ? START_POSITION : pos;
       if (!coords[drawPos]) continue;
       const [x, y] = coords[drawPos];
-      const r = radiusOf(0) + 7;
+      const r = radiusOf(START_POSITION) + 7;
       const isGold = isExit || isFinishLanding;
 
       const ring = makeDestRing(x, y, r, isGold);
@@ -158,7 +158,7 @@ const BOARD_RENDER = (() => {
     const byPos = {};
     for (const piece of Object.values(pieces)) {
       if (piece.state !== 'ON_BOARD') continue;
-      const pos = piece.position === 20 ? 0 : piece.position;
+      const pos = piece.position === FINISH_LANDING_POSITION ? START_POSITION : piece.position;
       if (!byPos[pos]) byPos[pos] = [];
       byPos[pos].push(piece);
     }

@@ -86,7 +86,7 @@
   }
 
   function showDestinationsFor(piece, steps) {
-    const fromPos = piece.state === 'WAITING' ? -1 : piece.position;
+    const fromPos = piece.state === 'WAITING' ? WAITING_POSITION : piece.position;
     const options = BOARD.getLandingOptions(fromPos, steps, piece.prevPosition);
     const destMap = {};
     for (const opt of options) {
